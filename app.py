@@ -43,7 +43,7 @@ def home():
             "contact": "https://t.me/r4h4t_69"
         },
         "description": "API service for AnimeXin website data",
-        "note": "The API might not work directly from PythonAnywhere as animexin.dev may block their servers. For reliable operation, consider running this on a different hosting provider.",
+        "note": "The API might not work directly as animexin.dev may block their servers. For reliable operation, consider running this on a different hosting provider or use proxy.",
         "endpoints": [
             {
                 "name": "Search Donghua",
@@ -268,4 +268,5 @@ def extract_video_url(html):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 8080))  # Get PORT from environment variable or default to 5000
+    app.run(host='0.0.0.0', port=port, debug=True)
