@@ -59,18 +59,18 @@ def home():
                 "path": "/donghua/info",
                 "method": "GET",
                 "parameters": {
-                    "url": "Donghua URL (required)"
+                    "url": "Donghua Slug (required)"
                 },
-                "example": f"{request.base_url}donghua/info?url=martial-universe-wu-dong-qian-kun-season-5/"
+                "example": f"{request.base_url}donghua/info?slug=martial-universe-wu-dong-qian-kun-season-5"
             },
             {
                 "name": "Get Episode Videos",
                 "path": "/episode/videos",
                 "method": "GET",
                 "parameters": {
-                    "url": "Episode URL (required)"
+                    "url": "Episode Slug (required)"
                 },
-                "example": f"{request.base_url}episode/videos?url=martial-universe-wu-dong-qian-kun-season-5-episode-12-end-indonesia-english-sub/"
+                "example": f"{request.base_url}episode/videos?ep_slug=martial-universe-wu-dong-qian-kun-season-5-episode-12-end-indonesia-english-sub"
             }
         ],
         "usage_tips": [
@@ -115,10 +115,12 @@ def search_donghua():
             status_text = status.text.strip() if status else None
             type_div = article.find('div', class_='typez')
             type_text = type_div.text.strip() if type_div else None
+            slug = url.split('/')[-2]
             
             results.append({
                 "title": title,
                 "url": url,
+                "slug": slug,
                 "image": image_url,
                 "status": status_text,
                 "type": type_text
@@ -135,9 +137,9 @@ def search_donghua():
 @app.route('/donghua/info', methods=['GET'])
 def get_donghua_info():
     """Get detailed info about a Donghua"""
-    url = request.args.get('url')
+    url = request.args.get('slug')
     if not url:
-        return jsonify({"error": "URL parameter is required"}), 400
+        return jsonify({"error": "slug parameter is required"}), 400
     url = f"{BASE_URL}{url}"
     response = make_request(url)
     if not response:
@@ -187,7 +189,8 @@ def get_donghua_info():
                     "title": ep_title,
                     "sub_type": ep_sub,
                     "release_date": ep_date,
-                    "url": ep_link['href']
+                    "url": ep_link['href'],
+                    "ep_slug": ep_link['href'].split('/')[-2]
                 })
         
         return jsonify({
@@ -203,10 +206,10 @@ def get_donghua_info():
 @app.route('/episode/videos', methods=['GET'])
 def get_episode_videos():
     """Get video URLs for an episode"""
-    url = request.args.get('url')
+    url = request.args.get('ep_slug')
 
     if not url:
-        return jsonify({"error": "URL parameter is required"}), 400
+        return jsonify({"error": "ep_slug parameter is required"}), 400
     url = f"{BASE_URL}{url}"
     response = make_request(url)
     if not response:
