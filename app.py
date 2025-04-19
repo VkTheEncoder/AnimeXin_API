@@ -237,9 +237,9 @@ def get_episode_videos():
                 
                 video_servers.append({
                     "server_name": option.text.strip(),
-                    "video_url": video_url,
-                    "embed_html": decoded_html if decoded_html else None,
-                    "encoded_data": encoded_url
+                    "video_url": video_url
+                    #"embed_html": decoded_html if decoded_html else None,
+                    #"encoded_data": encoded_url
                 })
         
         return jsonify({
