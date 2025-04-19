@@ -7,6 +7,17 @@ from requests.exceptions import RequestException
 
 app = Flask(__name__)
 BASE_URL = "https://animexin.dev/"
+@app.route('/website')
+def website():
+    """Serve the AnimeXin streaming website"""
+    return app.send_static_file('index.html')
+
+# Also add this to your existing Flask app
+from flask import send_from_directory
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
 
 # Configure headers to mimic a browser
 HEADERS = {
