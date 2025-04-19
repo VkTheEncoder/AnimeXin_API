@@ -61,7 +61,7 @@ def home():
                 "parameters": {
                     "url": "Donghua URL (required)"
                 },
-                "example": f"{request.base_url}donghua/info?url=https://animexin.dev/martial-universe-wu-dong-qian-kun-season-5/"
+                "example": f"{request.base_url}donghua/info?url=martial-universe-wu-dong-qian-kun-season-5/"
             },
             {
                 "name": "Get Episode Videos",
@@ -70,7 +70,7 @@ def home():
                 "parameters": {
                     "url": "Episode URL (required)"
                 },
-                "example": f"{request.base_url}episode/videos?url=https://animexin.dev/martial-universe-wu-dong-qian-kun-season-5-episode-12-end-indonesia-english-sub/"
+                "example": f"{request.base_url}episode/videos?url=martial-universe-wu-dong-qian-kun-season-5-episode-12-end-indonesia-english-sub/"
             }
         ],
         "usage_tips": [
@@ -138,7 +138,7 @@ def get_donghua_info():
     url = request.args.get('url')
     if not url:
         return jsonify({"error": "URL parameter is required"}), 400
-    
+    url = f"{BASE_URL}{url}"
     response = make_request(url)
     if not response:
         return jsonify({
@@ -204,9 +204,10 @@ def get_donghua_info():
 def get_episode_videos():
     """Get video URLs for an episode"""
     url = request.args.get('url')
+
     if not url:
         return jsonify({"error": "URL parameter is required"}), 400
-    
+    url = f"{BASE_URL}{url}"
     response = make_request(url)
     if not response:
         return jsonify({
@@ -226,21 +227,45 @@ def get_episode_videos():
         for option in server_select.find_all('option'):
             if option.get('value'):
                 encoded_url = option['value']
-                decoded_url = decode_video_url(encoded_url)
+                decoded_html = decode_video_url(encoded_url)
+                
+                # Extract the clean video URL from the HTML
+                video_url = extract_video_url(decoded_html)
                 
                 video_servers.append({
                     "server_name": option.text.strip(),
-                    "encoded_url": encoded_url,
-                    "decoded_url": decoded_url
+                    "video_url": video_url,
+                    "embed_html": decoded_html if decoded_html else None,
+                    "encoded_data": encoded_url
                 })
         
         return jsonify({
             "episode_url": url,
+            "available_servers": len(video_servers),
             "video_servers": video_servers
         })
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+def extract_video_url(html):
+    """Extract clean video URL from embed HTML"""
+    if not html:
+        return None
+        
+    try:
+        soup = BeautifulSoup(html, 'html.parser')
+        iframe = soup.find('iframe')
+        if iframe and iframe.get('src'):
+            src = iframe['src']
+            # Clean up URL
+            if src.startswith('//'):
+                src = f"https:{src}"
+            return src
+        return None
+    except:
+        return None
+
 
 if __name__ == '__main__':
     app.run(debug=True)
