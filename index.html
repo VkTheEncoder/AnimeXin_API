@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnimeXin Stream - Watch Donghua Online</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #6a00ff;
+            --primary-dark: #4a00b3;
+            --secondary: #ff3e81;
+            --dark: #1a1a2e;
+            --light: #f1f1f1;
+            --gray: #888;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: var(--dark);
+            color: var(--light);
+            min-height: 100vh;
+        }
+        
+        header {
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: var(--primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .logo i {
+            color: var(--secondary);
+        }
+        
+        .search-container {
+            display: flex;
+            width: 50%;
+            max-width: 500px;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border: none;
+            border-radius: 30px 0 0 30px;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 1rem;
+            outline: none;
+        }
+        
+        .search-btn {
+            padding: 0 1.5rem;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 0 30px 30px 0;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .search-btn:hover {
+            background-color: var(--primary-dark);
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 1.5rem;
+        }
+        
+        .nav-link {
+            color: var(--light);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+        
+        .nav-link:hover {
+            color: var(--secondary);
+        }
+        
+        .hero {
+            height: 70vh;
+            background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
+                        url('https://via.placeholder.com/1920x1080') no-repeat center center/cover;
+            display: flex;
+            align-items: center;
+            padding: 0 5rem;
+        }
+        
+        .hero-content {
+            max-width: 600px;
+        }
+        
+        .hero-title {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .hero-desc {
+            margin-bottom: 2rem;
+            line-height: 1.6;
+            color: var(--gray);
+        }
+        
+        .hero-btn {
+            padding: 0.8rem 2rem;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .hero-btn:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(106, 0, 255, 0.4);
+        }
+        
+        .section-title {
+            font-size: 2rem;
+            margin: 3rem 0 1.5rem;
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .section-title::after {
+            content: '';
+            flex: 1;
+            height: 2px;
+            background: linear-gradient(to right, var(--primary), transparent);
+        }
+        
+        .donghua-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1.5rem;
+            padding: 0 2rem;
+        }
+        
+        .donghua-card {
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            overflow: hidden;
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+        
+        .donghua-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .donghua-img {
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+        }
+        
+        .donghua-info {
+            padding: 1rem;
+        }
+        
+        .donghua-title {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .donghua-meta {
+            display: flex;
+            justify-content: space-between;
+            color: var(--gray);
+            font-size: 0.8rem;
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            display: none;
+            overflow-y: auto;
+        }
+        
+        .modal-content {
+            background-color: var(--dark);
+            margin: 2rem auto;
+            padding: 2rem;
+            max-width: 1200px;
+            border-radius: 10px;
+            position: relative;
+        }
+        
+        .close-modal {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            font-size: 1.5rem;
+            color: var(--gray);
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        
+        .close-modal:hover {
+            color: var(--secondary);
+        }
+        
+        .donghua-detail {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .donghua-poster {
+            width: 300px;
+            height: 450px;
+            object-fit: cover;
+            border-radius: 10px;
+        }
+        
+        .donghua-detail-info {
+            flex: 1;
+        }
+        
+        .donghua-detail-title {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: var(--primary);
+        }
+        
+        .donghua-detail-meta {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            color: var(--gray);
+        }
+        
+        .donghua-detail-desc {
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+        
+        .genre-tag {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            background-color: var(--primary);
+            color: white;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .episode-list {
+            margin-top: 2rem;
+        }
+        
+        .episode-item {
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.3s;
+        }
+        
+        .episode-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .episode-title {
+            font-weight: bold;
+        }
+        
+        .episode-meta {
+            color: var(--gray);
+            font-size: 0.9rem;
+        }
+        
+        .watch-btn {
+            padding: 0.5rem 1rem;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .watch-btn:hover {
+            background-color: var(--primary-dark);
+        }
+        
+        .player-container {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background-color: black;
+            margin-bottom: 1rem;
+        }
+        
+        .server-list {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .server-btn {
+            padding: 0.5rem 1rem;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .server-btn.active {
+            background-color: var(--primary);
+        }
+        
+        .server-btn:hover {
+            background-color: var(--primary);
+        }
+        
+        footer {
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 2rem;
+            text-align: center;
+            margin-top: 3rem;
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .footer-link {
+            color: var(--gray);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        
+        .footer-link:hover {
+            color: var(--secondary);
+        }
+        
+        .copyright {
+            color: var(--gray);
+            font-size: 0.9rem;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                gap: 1rem;
+                padding: 1rem;
+            }
+            
+            .search-container {
+                width: 100%;
+            }
+            
+            .hero {
+                padding: 0 1rem;
+                height: 60vh;
+                text-align: center;
+            }
+            
+            .hero-title {
+                font-size: 2rem;
+            }
+            
+            .donghua-detail {
+                flex-direction: column;
+            }
+            
+            .donghua-poster {
+                width: 100%;
+                height: auto;
+                max-height: 400px;
+            }
+            
+            .section-title {
+                padding: 0 1rem;
+            }
+            
+            .donghua-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                padding: 0 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="/" class="logo">
+            <i class="fas fa-play"></i>
+            <span>AnimeXin</span>
+        </a>
+        
+        <div class="search-container">
+            <input type="text" class="search-input" placeholder="Search for Donghua...">
+            <button class="search-btn"><i class="fas fa-search"></i></button>
+        </div>
+        
+        <div class="nav-links">
+            <a href="#" class="nav-link">Home</a>
+            <a href="#" class="nav-link">Popular</a>
+            <a href="#" class="nav-link">Genres</a>
+            <a href="#" class="nav-link">About</a>
+        </div>
+    </header>
+    
+    <section class="hero">
+        <div class="hero-content">
+            <h1 class="hero-title">Watch Donghua Online</h1>
+            <p class="hero-desc">
+                Stream the latest and greatest Chinese animations in high quality. 
+                From wuxia to xianxia, we have all your favorite Donghua series.
+            </p>
+            <button class="hero-btn">Browse Collection</button>
+        </div>
+    </section>
+    
+    <section>
+        <h2 class="section-title">
+            <i class="fas fa-fire"></i> Trending Now
+        </h2>
+        <div class="donghua-grid" id="trending-grid">
+            <!-- Trending donghua will be loaded here -->
+        </div>
+    </section>
+    
+    <section>
+        <h2 class="section-title">
+            <i class="fas fa-star"></i> Recently Updated
+        </h2>
+        <div class="donghua-grid" id="recent-grid">
+            <!-- Recent donghua will be loaded here -->
+        </div>
+    </section>
+    
+    <div class="modal" id="donghua-modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div id="donghua-detail-content">
+                <!-- Donghua detail will be loaded here -->
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="player-modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div id="player-content">
+                <!-- Video player will be loaded here -->
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        <div class="footer-links">
+            <a href="#" class="footer-link">Terms of Service</a>
+            <a href="#" class="footer-link">Privacy Policy</a>
+            <a href="#" class="footer-link">DMCA</a>
+            <a href="#" class="footer-link">Contact</a>
+        </div>
+        <p class="copyright">© 2023 AnimeXin Stream. All rights reserved.</p>
+    </footer>
+    
+    <script>
+        // API Configuration
+        const API_BASE_URL = 'https://gastric-wolverine-3ad0w-66d15b8c.koyeb.app/';
+        
+        // DOM Elements
+        const searchInput = document.querySelector('.search-input');
+        const searchBtn = document.querySelector('.search-btn');
+        const trendingGrid = document.getElementById('trending-grid');
+        const recentGrid = document.getElementById('recent-grid');
+        const donghuaModal = document.getElementById('donghua-modal');
+        const playerModal = document.getElementById('player-modal');
+        const donghuaDetailContent = document.getElementById('donghua-detail-content');
+        const playerContent = document.getElementById('player-content');
+        const closeModals = document.querySelectorAll('.close-modal');
+        
+        // Sample trending search queries (replace with actual API calls)
+        const trendingQueries = ['Martial Universe', 'Battle Through the Heavens', 'Perfect World', 'Soul Land'];
+        const recentQueries = ['Stellar Transformations', 'Swallowed Star', 'The Legend of Hei', 'A Will Eternal'];
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load trending and recent donghua
+            loadTrendingDonghua();
+            loadRecentDonghua();
+            
+            // Setup event listeners
+            setupEventListeners();
+        });
+        
+        function setupEventListeners() {
+            // Search functionality
+            searchBtn.addEventListener('click', () => {
+                const query = searchInput.value.trim();
+                if (query) {
+                    searchDonghua(query);
+                }
+            });
+            
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const query = searchInput.value.trim();
+                    if (query) {
+                        searchDonghua(query);
+                    }
+                }
+            });
+            
+            // Close modals
+            closeModals.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    donghuaModal.style.display = 'none';
+                    playerModal.style.display = 'none';
+                    playerContent.innerHTML = ''; // Clear player when closing
+                });
+            });
+            
+            // Close modals when clicking outside
+            window.addEventListener('click', (e) => {
+                if (e.target === donghuaModal) {
+                    donghuaModal.style.display = 'none';
+                }
+                if (e.target === playerModal) {
+                    playerModal.style.display = 'none';
+                    playerContent.innerHTML = ''; // Clear player when closing
+                }
+            });
+        }
+        
+        async function loadTrendingDonghua() {
+            trendingGrid.innerHTML = '<p>Loading trending donghua...</p>';
+            
+            try {
+                // For demo purposes, we'll use the first trending query
+                const response = await fetch(`${API_BASE_URL}search?query=${encodeURIComponent(trendingQueries[0])}`);
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    displayDonghuaList(data.results, trendingGrid);
+                } else {
+                    trendingGrid.innerHTML = '<p>No trending donghua found.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading trending donghua:', error);
+                trendingGrid.innerHTML = '<p>Failed to load trending donghua. Please try again later.</p>';
+            }
+        }
+        
+        async function loadRecentDonghua() {
+            recentGrid.innerHTML = '<p>Loading recent donghua...</p>';
+            
+            try {
+                // For demo purposes, we'll use the first recent query
+                const response = await fetch(`${API_BASE_URL}search?query=${encodeURIComponent(recentQueries[0])}`);
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    displayDonghuaList(data.results, recentGrid);
+                } else {
+                    recentGrid.innerHTML = '<p>No recent donghua found.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading recent donghua:', error);
+                recentGrid.innerHTML = '<p>Failed to load recent donghua. Please try again later.</p>';
+            }
+        }
+        
+        async function searchDonghua(query) {
+            trendingGrid.innerHTML = '<p>Searching...</p>';
+            recentGrid.style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}search?query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    displayDonghuaList(data.results, trendingGrid);
+                    document.querySelector('.section-title').textContent = `Search Results for "${query}"`;
+                } else {
+                    trendingGrid.innerHTML = `<p>No results found for "${query}".</p>`;
+                }
+            } catch (error) {
+                console.error('Error searching donghua:', error);
+                trendingGrid.innerHTML = '<p>Failed to search. Please try again later.</p>';
+            }
+        }
+        
+        function displayDonghuaList(donghuaList, container) {
+            container.innerHTML = '';
+            
+            donghuaList.forEach(donghua => {
+                const card = document.createElement('div');
+                card.className = 'donghua-card';
+                card.innerHTML = `
+                    <img src="${donghua.image || 'https://via.placeholder.com/200x300'}" alt="${donghua.title}" class="donghua-img">
+                    <div class="donghua-info">
+                        <h3 class="donghua-title">${donghua.title}</h3>
+                        <div class="donghua-meta">
+                            <span>${donghua.type || 'TV'}</span>
+                            <span>${donghua.status || 'Ongoing'}</span>
+                        </div>
+                    </div>
+                `;
+                
+                card.addEventListener('click', () => {
+                    showDonghuaDetail(donghua.slug);
+                });
+                
+                container.appendChild(card);
+            });
+        }
+        
+        async function showDonghuaDetail(slug) {
+            donghuaDetailContent.innerHTML = '<p>Loading donghua details...</p>';
+            donghuaModal.style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}donghua/info?slug=${slug}`);
+                const data = await response.json();
+                
+                if (data.title) {
+                    displayDonghuaDetail(data);
+                } else {
+                    donghuaDetailContent.innerHTML = '<p>Failed to load donghua details.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading donghua details:', error);
+                donghuaDetailContent.innerHTML = '<p>Failed to load donghua details. Please try again later.</p>';
+            }
+        }
+        
+        function displayDonghuaDetail(donghua) {
+            donghuaDetailContent.innerHTML = `
+                <div class="donghua-detail">
+                    <img src="${donghua.info?.image || 'https://via.placeholder.com/300x450'}" alt="${donghua.title}" class="donghua-poster">
+                    <div class="donghua-detail-info">
+                        <h1 class="donghua-detail-title">${donghua.title}</h1>
+                        <div class="donghua-detail-meta">
+                            <span>${donghua.info?.Type || 'TV Series'}</span>
+                            <span>${donghua.info?.Status || 'Ongoing'}</span>
+                            <span>${donghua.info?.Released || 'N/A'}</span>
+                        </div>
+                        <div>
+                            ${donghua.genres?.map(genre => `<span class="genre-tag">${genre}</span>`).join('') || ''}
+                        </div>
+                        <p class="donghua-detail-desc">
+                            ${donghua.info?.Plot || 'No description available.'}
+                        </p>
+                    </div>
+                </div>
+                
+                ${donghua.episodes?.length > 0 ? `
+                <div class="episode-list">
+                    <h3>Episodes</h3>
+                    ${donghua.episodes.map(ep => `
+                        <div class="episode-item">
+                            <div>
+                                <div class="episode-title">${ep.episode_number}: ${ep.title}</div>
+                                <div class="episode-meta">${ep.release_date} • ${ep.sub_type}</div>
+                            </div>
+                            <button class="watch-btn" data-ep-slug="${ep.ep_slug}">Watch</button>
+                        </div>
+                    `).join('')}
+                </div>
+                ` : '<p>No episodes available yet.</p>'}
+            `;
+            
+            // Add event listeners to watch buttons
+            document.querySelectorAll('.watch-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const epSlug = e.target.getAttribute('data-ep-slug');
+                    showEpisodePlayer(epSlug);
+                });
+            });
+        }
+        
+        async function showEpisodePlayer(epSlug) {
+            playerContent.innerHTML = '<p>Loading episode...</p>';
+            playerModal.style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}episode/videos?ep_slug=${epSlug}`);
+                const data = await response.json();
+                
+                if (data.video_servers && data.video_servers.length > 0) {
+                    displayVideoPlayer(data);
+                } else {
+                    playerContent.innerHTML = '<p>No video sources available for this episode.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading episode:', error);
+                playerContent.innerHTML = '<p>Failed to load episode. Please try again later.</p>';
+            }
+        }
+        
+        function displayVideoPlayer(episodeData) {
+            playerContent.innerHTML = `
+                <div class="player-container" id="video-player">
+                    <iframe src="${episodeData.video_servers[0].video_url || ''}" 
+                            width="100%" 
+                            height="100%" 
+                            frameborder="0" 
+                            allowfullscreen></iframe>
+                </div>
+                
+                <div class="server-list">
+                    ${episodeData.video_servers.map((server, index) => `
+                        <button class="server-btn ${index === 0 ? 'active' : ''}" 
+                                data-video-url="${server.video_url}">
+                            ${server.server_name}
+                        </button>
+                    `).join('')}
+                </div>
+                
+                <p>If the video doesn't load, try a different server above.</p>
+            `;
+            
+            // Add event listeners to server buttons
+            document.querySelectorAll('.server-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    // Update active button
+                    document.querySelectorAll('.server-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    
+                    // Update video source
+                    const videoUrl = e.target.getAttribute('data-video-url');
+                    const iframe = document.querySelector('#video-player iframe');
+                    if (iframe) {
+                        iframe.src = videoUrl;
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
