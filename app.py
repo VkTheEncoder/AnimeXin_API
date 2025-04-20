@@ -1,23 +1,16 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS 
 import requests
 from bs4 import BeautifulSoup
 import base64
+import os
 from urllib.parse import quote
 from requests.exceptions import RequestException
 
 app = Flask(__name__)
 BASE_URL = "https://animexin.dev/"
-@app.route('/website')
-def website():
-    """Serve the AnimeXin streaming website"""
-    return app.send_static_file('index.html')
 
-# Also add this to your existing Flask app
-from flask import send_from_directory
-
-@app.route('/static/<path:filename>')
-def serve_static(filename):
-    return send_from_directory('static', filename)
+CORS(app)
 
 # Configure headers to mimic a browser
 HEADERS = {
@@ -98,52 +91,69 @@ def search_donghua():
     query = request.args.get('query')
     if not query:
         return jsonify({"error": "Query parameter is required"}), 400
-    
+
     search_url = f"{BASE_URL}?s={quote(query)}"
     response = make_request(search_url)
-    
+
     if not response:
         return jsonify({
             "error": "Failed to connect to animexin.dev",
             "solution": "This might be due to server restrictions. Try running the API on a different hosting provider."
         }), 502
-    
+
     try:
         soup = BeautifulSoup(response.text, 'html.parser')
         results = []
         articles = soup.select('div.listupd article.bs')
-        
+
         for article in articles:
             link = article.find('a', href=True)
             if not link:
                 continue
-                
-            title = link.get('title', '')
+
+            title = link.get('title', '').strip()
             url = link['href']
             image = article.find('img', {'src': True})
             image_url = image['src'] if image else None
-            status = article.find('div', class_='status')
-            status_text = status.text.strip() if status else None
+
+            # Extract additional fields
+            status_tag = article.find('div', class_='status')
+            status_text = status_tag.text.strip() if status_tag else None
+
             type_div = article.find('div', class_='typez')
             type_text = type_div.text.strip() if type_div else None
+
+            badge = article.find('div', class_='hotbadge')
+            is_hot = bool(badge)
+
+            bt_div = article.find('div', class_='bt')
+            episode_status = bt_div.find('span', class_='epx').text.strip() if bt_div and bt_div.find('span', class_='epx') else None
+            sub_status = bt_div.find('span', class_='sb').text.strip() if bt_div and bt_div.find('span', class_='sb') else None
+
             slug = url.split('/')[-2]
-            
+            rel_id = link.get('rel')
+
             results.append({
                 "title": title,
-                "url": url,
                 "slug": slug,
+                "url": url,
                 "image": image_url,
                 "status": status_text,
-                "type": type_text
+                "type": type_text,
+                "episode_status": episode_status,
+                "sub_status": sub_status,
+                "is_hot": is_hot,
+                "rel_id": rel_id
             })
-            
+
         return jsonify({
             "query": query,
             "results": results
         })
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/donghua/info', methods=['GET'])
 def get_donghua_info():
@@ -164,7 +174,30 @@ def get_donghua_info():
         
         # Extract basic info
         title = soup.find('h1', class_='entry-title').text.strip()
+        alter_title = soup.find('span', class_='alter').text.strip() if soup.find('span', class_='alter') else None
         
+        # Extract cover images
+        cover_images = {
+            'main': soup.find('div', class_='ime').find('img')['src'] if soup.find('div', class_='ime') else None,
+            'thumb': soup.find('div', class_='thumb').find('img')['src'] if soup.find('div', class_='thumb') else None
+        }
+        
+        # Extract rating info
+        rating_div = soup.find('div', class_='rating-prc')
+        rating_info = {
+            'value': rating_div.find('meta', itemprop='ratingValue')['content'] if rating_div else None,
+            'best': rating_div.find('meta', itemprop='bestRating')['content'] if rating_div else None,
+            'count': rating_div.find('meta', itemprop='ratingCount')['content'] if rating_div else None,
+            'visual': soup.find('div', class_='rtb').find('span')['style'].replace('width:', '').replace('%', '').strip() if soup.find('div', class_='rtb') else None
+        }
+        
+        # Extract followers count
+        followers = soup.find('div', class_='bmc').text.replace('Followed', '').replace('people', '').strip() if soup.find('div', class_='bmc') else None
+        
+        # Extract basic description
+        description = soup.find('div', class_='mindesc').text.strip() if soup.find('div', class_='mindesc') else None
+        
+        # Extract info items
         info_div = soup.find('div', class_='info-content')
         if not info_div:
             return jsonify({"error": "Could not find info content"}), 404
@@ -180,6 +213,16 @@ def get_donghua_info():
         
         # Extract genres
         genres = [a.text for a in soup.select('div.genxed a')]
+        
+        # Extract tags
+        tags = [a.text for a in soup.select('div.bottom.tags a')]
+        
+        # Extract synopsis
+        synopsis_div = soup.find('div', class_='synp')
+        synopsis = {
+            'english': synopsis_div.find('p').text.strip() if synopsis_div and synopsis_div.find('p') else None,
+            'indonesian': synopsis_div.find('div', class_='entry-content').find('p').text.strip() if synopsis_div and synopsis_div.find('div', class_='entry-content') and synopsis_div.find('div', class_='entry-content').find('p') else None
+        }
         
         # Extract episodes
         episodes = []
@@ -204,10 +247,31 @@ def get_donghua_info():
                     "ep_slug": ep_link['href'].split('/')[-2]
                 })
         
+        # Extract first and last episode
+        lastend_div = soup.find('div', class_='lastend')
+        first_last_ep = {
+            'first': {
+                'episode': lastend_div.find('span', class_='epcurfirst').text.strip() if lastend_div and lastend_div.find('span', class_='epcurfirst') else None,
+                'url': lastend_div.find('a')['href'] if lastend_div and lastend_div.find('a') else None
+            },
+            'last': {
+                'episode': lastend_div.find('span', class_='epcurlast').text.strip() if lastend_div and lastend_div.find('span', class_='epcurlast') else None,
+                'url': lastend_div.find_all('a')[1]['href'] if lastend_div and len(lastend_div.find_all('a')) > 1 else None
+            }
+        }
+        
         return jsonify({
             "title": title,
+            "alternate_title": alter_title,
+            "description": description,
+            "cover_images": cover_images,
+            "rating": rating_info,
+            "followers": followers,
             "info": info_items,
             "genres": genres,
+            "tags": tags,
+            "synopsis": synopsis,
+            "first_last_episode": first_last_ep,
             "episodes": episodes
         })
         
