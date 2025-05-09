@@ -1149,6 +1149,15 @@
             if (isLightsOff) {
                 // Scroll to video player
                 videoSection.scrollIntoView({ behavior: 'smooth' });
+                // Hide other elements
+                document.querySelectorAll('.container > *:not(.video-section)').forEach(el => {
+                    el.style.visibility = 'hidden';
+                });
+            } else {
+                // Show all elements
+                document.querySelectorAll('.container > *').forEach(el => {
+                    el.style.visibility = 'visible';
+                });
             }
         }
         
