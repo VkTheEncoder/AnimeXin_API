@@ -57,7 +57,7 @@ def search_donghua():
     if not r:
         return jsonify({"error":"animexin.dev unreachable"}),502
 
-    soup = BeautifulSoup(r.text,'html.parser')
+    soup = BeautifulSoup(r.text,  'lxml')
     results = []
     for art in soup.select('div.listupd article.bs'):
         a = art.find('a',href=True)
@@ -93,7 +93,7 @@ def get_donghua_info():
     if not r:
         return jsonify({"error":"animexin.dev unreachable"}),502
 
-    soup = BeautifulSoup(r.text,'html.parser')
+    soup = BeautifulSoup(r.text,  'lxml')
 
     # Basic titles
     title       = safe_text(soup,'h1.entry-title')
@@ -204,7 +204,7 @@ def episode_videos():
     if not r:
         return jsonify({"error":"animexin.dev unreachable"}),502
 
-    soup = BeautifulSoup(r.text,'html.parser')
+    soup = BeautifulSoup(r.text,  'lxml')
     sel  = soup.find('select',class_='mirror')
     if not sel:
         return jsonify({"error":"no servers"}),404
