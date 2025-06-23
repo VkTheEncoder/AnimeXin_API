@@ -19,6 +19,7 @@ HEADERS = {
 }
 
 def make_request(url):
+    """GET helper with headers + timeout."""
     try:
         r = requests.get(url, headers=HEADERS, timeout=10)
         r.raise_for_status()
@@ -40,71 +41,77 @@ def home():
         "api_name": "AnimeXin API",
         "description": "Search, info and videos (donghua or movie)",
         "endpoints": [
-            {"path": "/search?query=…"},
-            {"path": "/donghua/info?slug=…"},
-            {"path": "/episode/videos?ep_slug=…"}
+            "/search?query=…",
+            "/donghua/info?slug=…",
+            "/episode/videos?ep_slug=…"
         ]
     })
 
 @app.route('/search')
 def search_donghua():
+    """Search for Donghua by title (safe, never 500)."""
     q = request.args.get('query','').strip()
     if not q:
-        return jsonify({"error":"query required"}),400
+        return jsonify({"error":"query parameter is required"}), 400
 
-    url = f"{BASE_URL}?s={quote(q)}"
-    r = make_request(url)
-    if not r:
-        return jsonify({"error":"animexin.dev unreachable"}),502
+    try:
+        # 1) fetch the search page
+        url = f"{BASE_URL}?s={quote(q)}"
+        r = make_request(url)
+        if not r:
+            # API unreachable → treat as empty
+            return jsonify({"query":q,"results":[]})
 
-    soup = BeautifulSoup(r.text,  'lxml')
-    results = []
-    for art in soup.select('div.listupd article.bs'):
-        a = art.find('a',href=True)
-        if not a: continue
-        u = a['href']
-        slug = u.rstrip('/').split('/')[-1]
-        results.append({
-            "title":       a.get('title','').strip(),
-            "slug":        slug,
-            "url":         u,
-            "image":       safe_attr(art,'img','src'),
-            "status":      safe_text(art,'div.status'),
-            "type":        safe_text(art,'div.typez'),
-            "episode_status": safe_text(art,'div.bt span.epx'),
-            "sub_status":     safe_text(art,'div.bt span.sb'),
-            "is_hot":      bool(art.select_one('div.hotbadge'))
-        })
-    return jsonify({"query":q,"results":results})
+        soup = BeautifulSoup(r.text, 'lxml')
+        results = []
+        for art in soup.select('div.listupd article.bs'):
+            a = art.find('a', href=True)
+            if not a:
+                continue
+            u = a['href']
+            slug = u.rstrip('/').split('/')[-1]
+            results.append({
+                "title":           a.get('title','').strip(),
+                "slug":            slug,
+                "url":             u,
+                "image":           safe_attr(art,'img','src'),
+                "status":          safe_text(art,'div.status'),
+                "type":            safe_text(art,'div.typez'),
+                "episode_status":  safe_text(art,'div.bt span.epx'),
+                "sub_status":      safe_text(art,'div.bt span.sb'),
+                "is_hot":          bool(art.select_one('div.hotbadge'))
+            })
+        return jsonify({"query":q,"results":results})
+
+    except Exception as e:
+        # log server-side if you like, but return 200 with empty results
+        print("Search parsing error:", e)
+        return jsonify({"query":q,"results":[]})
 
 @app.route('/donghua/info')
 def get_donghua_info():
+    """Get detailed info about a Donghua or Movie."""
     slug = request.args.get('slug','').strip()
     if not slug:
-        return jsonify({"error":"slug required"}),400
+        return jsonify({"error":"slug parameter is required"}), 400
 
-    # 1) try donghua
-    url = f"{BASE_URL}donghua/{slug}"
-    r = make_request(url)
-    # 2) fallback to movie
-    if not r or r.status_code>=400:
-        url = f"{BASE_URL}movie/{slug}"
-        r = make_request(url)
+    # Try /donghua/, then fallback /movie/
+    for path in ("donghua", "movie"):
+        r = make_request(f"{BASE_URL}{path}/{slug}")
+        if r:
+            break
     if not r:
-        return jsonify({"error":"animexin.dev unreachable"}),502
+        return jsonify({"error":"animexin.dev unreachable"}), 502
 
-    soup = BeautifulSoup(r.text,  'lxml')
+    soup = BeautifulSoup(r.text, 'lxml')
 
-    # Basic titles
     title       = safe_text(soup,'h1.entry-title')
     alter_title = safe_text(soup,'span.alter')
+    cover_images= {
+        "main":  safe_attr(soup,'div.ime img','src'),
+        "thumb": safe_attr(soup,'div.thumb img','src')
+    }
 
-    # Covers
-    cover_main  = safe_attr(soup,'div.ime img','src')
-    cover_thumb = safe_attr(soup,'div.thumb img','src')
-    cover_images= {"main":cover_main,"thumb":cover_thumb}
-
-    # Rating
     rating = {}
     if soup.select_one('div.rating-prc'):
         for field in ('ratingValue','bestRating','ratingCount'):
@@ -115,13 +122,11 @@ def get_donghua_info():
         if vis and vis.has_attr('style'):
             rating['visual'] = vis['style'].replace('width:','').replace('%','').strip()
 
-    # Followers & Description
-    followers   = safe_text(soup,'div.bmc')
+    followers = safe_text(soup,'div.bmc')
     if followers:
         followers = followers.replace('Followed','').replace('people','').strip()
     description = safe_text(soup,'div.mindesc')
 
-    # Info items
     info_items = {}
     for span in soup.select('div.info-content span'):
         b = span.find('b')
@@ -130,11 +135,9 @@ def get_donghua_info():
             b.decompose()
             info_items[key] = span.text.strip()
 
-    # Genres & Tags
-    genres = [a.text for a in soup.select('div.genxed a')]
-    tags   = [a.text for a in soup.select('div.bottom.tags a')]
+    genres  = [a.text for a in soup.select('div.genxed a')]
+    tags    = [a.text for a in soup.select('div.bottom.tags a')]
 
-    # Synopsis
     synopsis = {"english":None,"indonesian":None}
     synp = soup.select_one('div.synp')
     if synp:
@@ -143,7 +146,6 @@ def get_donghua_info():
         synopsis['english']    = p_en.text.strip() if p_en else None
         synopsis['indonesian']= p_id.text.strip() if p_id else None
 
-    # Episodes
     episodes = []
     for li in soup.select('div.eplister li'):
         a = li.find('a',href=True)
@@ -158,20 +160,14 @@ def get_donghua_info():
             "ep_slug":        ep_slug
         })
 
-    # First/Last
     fl = {}
     lastend = soup.select_one('div.lastend')
     if lastend:
-        ff = lastend.select_one('span.epcurfirst')
-        ll = lastend.select('a')
-        fl['first'] = {
-            "episode": ff.text.strip() if ff else None,
-            "url":     ll[0]['href'] if ll else None
-        }
-        fl['last'] = {
-            "episode": safe_text(lastend,'span.epcurlast'),
-            "url":     ll[1]['href'] if len(ll)>1 else None
-        }
+        ff = safe_text(lastend,'span.epcurfirst')
+        urls = [a['href'] for a in lastend.find_all('a', href=True)]
+        fl['first']= {"episode": ff, "url": urls[0] if urls else None}
+        ll = safe_text(lastend,'span.epcurlast')
+        fl['last'] = {"episode": ll, "url": urls[1] if len(urls)>1 else None}
 
     return jsonify({
         "title":            title,
@@ -190,42 +186,39 @@ def get_donghua_info():
 
 @app.route('/episode/videos')
 def episode_videos():
+    """Get video URLs for an episode."""
     ep = request.args.get('ep_slug','').strip()
     if not ep:
-        return jsonify({"error":"ep_slug required"}),400
+        return jsonify({"error":"ep_slug parameter is required"}), 400
 
-    # 1) donghua
-    url = f"{BASE_URL}donghua/{ep}"
-    r = make_request(url)
-    # 2) movie
-    if not r or r.status_code>=400:
-        url = f"{BASE_URL}movie/{ep}"
-        r = make_request(url)
+    for path in ("donghua","movie"):
+        r = make_request(f"{BASE_URL}{path}/{ep}")
+        if r: break
     if not r:
         return jsonify({"error":"animexin.dev unreachable"}),502
 
-    soup = BeautifulSoup(r.text,  'lxml')
+    soup = BeautifulSoup(r.text,'lxml')
     sel  = soup.find('select',class_='mirror')
     if not sel:
-        return jsonify({"error":"no servers"}),404
+        return jsonify({"error":"no video servers found"}),404
 
-    video_servers = []
+    video_servers=[]
     for opt in sel.find_all('option'):
         val = opt.get('value')
         if not val: continue
         html = base64.b64decode(val).decode('utf-8')
-        fsoup= BeautifulSoup(html,'html.parser')
-        iframe = fsoup.find('iframe')
-        src = iframe['src'] if iframe and iframe.has_attr('src') else None
+        fsoup= BeautifulSoup(html,'lxml')
+        ifr  = fsoup.find('iframe')
+        src  = ifr['src'] if ifr and ifr.has_attr('src') else None
         if src and src.startswith('//'):
-            src = 'https:'+src
+            src = 'https:' + src
         video_servers.append({
             "server_name": opt.text.strip(),
-            "video_url":   src
+            "video_url": src
         })
 
     return jsonify({
-        "episode_url": url,
+        "episode_url": r.url,
         "available_servers": len(video_servers),
         "video_servers": video_servers
     })
