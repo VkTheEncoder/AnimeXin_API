@@ -158,11 +158,17 @@ def search_donghua():
 @app.route('/donghua/info', methods=['GET'])
 def get_donghua_info():
     """Get detailed info about a Donghua"""
-    url = request.args.get('slug')
-    if not url:
+    slug = request.args.get('slug')
+    if not slug:
         return jsonify({"error": "slug parameter is required"}), 400
-    url = f"{BASE_URL}{url}"
-    response = make_request(url)
+
+    # try donghua first
+    donghua_url = f"{BASE_URL}donghua/{slug}"
+    response = make_request(donghua_url)
+    # if it 404s or errors, try movie
+    if not response or response.status_code >= 400:
+        movie_url = f"{BASE_URL}movie/{slug}"
+        response = make_request(movie_url)
     if not response:
         return jsonify({
             "error": "Failed to connect to animexin.dev",
@@ -281,12 +287,16 @@ def get_donghua_info():
 @app.route('/episode/videos', methods=['GET'])
 def get_episode_videos():
     """Get video URLs for an episode"""
-    url = request.args.get('ep_slug')
-
-    if not url:
+    ep_slug = request.args.get('ep_slug')
+    if not ep_slug:
         return jsonify({"error": "ep_slug parameter is required"}), 400
-    url = f"{BASE_URL}{url}"
-    response = make_request(url)
+
+    # same fallback logic for episodes
+    donghua_ep = f"{BASE_URL}donghua/{ep_slug}"
+    response = make_request(donghua_ep)
+    if not response or response.status_code >= 400:
+        movie_ep = f"{BASE_URL}movie/{ep_slug}"
+        response = make_request(movie_ep)
     if not response:
         return jsonify({
             "error": "Failed to connect to animexin.dev",
