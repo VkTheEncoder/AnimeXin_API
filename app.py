@@ -1,243 +1,234 @@
-# main.py
-
-import logging
-import io
+from flask import Flask, request, jsonify
+from flask_cors import CORS 
 import requests
-from urllib.parse import urlparse
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Updater,
-    CommandHandler,
-    CallbackQueryHandler,
-    CallbackContext,
-    DispatcherHandlerStop,
-)
+from bs4 import BeautifulSoup
+import base64
+import os
+from urllib.parse import quote
+from requests.exceptions import RequestException
 
-import config
-from utils import (
-    search_series,
-    get_series_info,
-    get_episode_videos,
-    download_subtitles_with_ytdlp,
-)
+app = Flask(__name__)
+BASE_URL = "https://animexin.dev/"
+CORS(app)
 
-# — Logging setup —
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                  'AppleWebKit/537.36 (KHTML, like Gecko) '
+                  'Chrome/91.0.4472.124 Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9',
+}
 
-PAGE_SIZE = 10
-
-
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text(
-        "👋 Welcome to the Animexin bot!\n"
-        "Use /search <title> to look up a Donghua/Anime."
-    )
-
-
-def search(update: Update, context: CallbackContext):
-    if not context.args:
-        return update.message.reply_text("Usage: /search <series name>")
-
-    query = " ".join(context.args)
+def make_request(url):
     try:
-        series_list = search_series(query)
-    except Exception as e:
-        logger.error("Search error: %s", e)
-        return update.message.reply_text("⚠️ Error contacting animexin_api.")
+        r = requests.get(url, headers=HEADERS, timeout=10)
+        r.raise_for_status()
+        return r
+    except RequestException:
+        return None
 
-    if not series_list:
-        return update.message.reply_text(f"🚫 No series found for “{query}”.")
+def safe_text(soup, selector, default=None):
+    el = soup.select_one(selector)
+    return el.text.strip() if el else default
 
-    # stash and reset pagination
-    context.user_data["series_list"] = series_list
-    context.user_data["series_page"] = 0
+def safe_attr(soup, selector, attr, default=None):
+    el = soup.select_one(selector)
+    return el.get(attr) if el and el.has_attr(attr) else default
 
-    _show_series_page(update, context, page=0)
+@app.route('/')
+def home():
+    return jsonify({
+        "api_name": "AnimeXin API",
+        "description": "Search, info and videos (donghua or movie)",
+        "endpoints": [
+            {"path": "/search?query=…"},
+            {"path": "/donghua/info?slug=…"},
+            {"path": "/episode/videos?ep_slug=…"}
+        ]
+    })
 
+@app.route('/search')
+def search_donghua():
+    q = request.args.get('query','').strip()
+    if not q:
+        return jsonify({"error":"query required"}),400
 
-def _show_series_page(update_or_query, context: CallbackContext, page: int):
-    series_list = context.user_data["series_list"]
-    total = len(series_list)
-    start = page * PAGE_SIZE
-    end = min(start + PAGE_SIZE, total)
+    url = f"{BASE_URL}?s={quote(q)}"
+    r = make_request(url)
+    if not r:
+        return jsonify({"error":"animexin.dev unreachable"}),502
 
-    buttons = []
-    for i in range(start, end):
-        s = series_list[i]
-        key = str(i)
-        buttons.append([
-            InlineKeyboardButton(
-                s.get("title", f"Series {i+1}"),
-                callback_data=f"series_select#{key}"
-            )
-        ])
+    soup = BeautifulSoup(r.text,'html.parser')
+    results = []
+    for art in soup.select('div.listupd article.bs'):
+        a = art.find('a',href=True)
+        if not a: continue
+        u = a['href']
+        slug = u.rstrip('/').split('/')[-1]
+        results.append({
+            "title":       a.get('title','').strip(),
+            "slug":        slug,
+            "url":         u,
+            "image":       safe_attr(art,'img','src'),
+            "status":      safe_text(art,'div.status'),
+            "type":        safe_text(art,'div.typez'),
+            "episode_status": safe_text(art,'div.bt span.epx'),
+            "sub_status":     safe_text(art,'div.bt span.sb'),
+            "is_hot":      bool(art.select_one('div.hotbadge'))
+        })
+    return jsonify({"query":q,"results":results})
 
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton("« Prev", callback_data=f"series_page#{page-1}"))
-    if end < total:
-        nav.append(InlineKeyboardButton("Next »", callback_data=f"series_page#{page+1}"))
-    if nav:
-        buttons.append(nav)
+@app.route('/donghua/info')
+def get_donghua_info():
+    slug = request.args.get('slug','').strip()
+    if not slug:
+        return jsonify({"error":"slug required"}),400
 
-    markup = InlineKeyboardMarkup(buttons)
+    # 1) try donghua
+    url = f"{BASE_URL}donghua/{slug}"
+    r = make_request(url)
+    # 2) fallback to movie
+    if not r or r.status_code>=400:
+        url = f"{BASE_URL}movie/{slug}"
+        r = make_request(url)
+    if not r:
+        return jsonify({"error":"animexin.dev unreachable"}),502
 
-    text = "Select a series:"
-    if isinstance(update_or_query, Update):
-        update_or_query.message.reply_text(text, reply_markup=markup)
-    else:
-        update_or_query.edit_message_text(text, reply_markup=markup)
+    soup = BeautifulSoup(r.text,'html.parser')
 
-    context.user_data["series_page"] = page
+    # Basic titles
+    title       = safe_text(soup,'h1.entry-title')
+    alter_title = safe_text(soup,'span.alter')
 
+    # Covers
+    cover_main  = safe_attr(soup,'div.ime img','src')
+    cover_thumb = safe_attr(soup,'div.thumb img','src')
+    cover_images= {"main":cover_main,"thumb":cover_thumb}
 
-def series_page_callback(update: Update, context: CallbackContext):
-    q = update.callback_query
-    q.answer()
-    page = int(q.data.split("#",1)[1])
-    _show_series_page(q, context, page)
+    # Rating
+    rating = {}
+    if soup.select_one('div.rating-prc'):
+        for field in ('ratingValue','bestRating','ratingCount'):
+            sel = soup.select_one(f"div.rating-prc meta[itemprop={field}]")
+            if sel and sel.has_attr('content'):
+                rating[field] = sel['content']
+        vis = soup.select_one('div.rtb span')
+        if vis and vis.has_attr('style'):
+            rating['visual'] = vis['style'].replace('width:','').replace('%','').strip()
 
+    # Followers & Description
+    followers   = safe_text(soup,'div.bmc')
+    if followers:
+        followers = followers.replace('Followed','').replace('people','').strip()
+    description = safe_text(soup,'div.mindesc')
 
-def series_select_callback(update: Update, context: CallbackContext):
-    q = update.callback_query
-    q.answer()
-    idx = int(q.data.split("#",1)[1])
-    series_list = context.user_data.get("series_list", [])
-    if idx < 0 or idx >= len(series_list):
-        return q.edit_message_text("❌ Invalid selection.")
+    # Info items
+    info_items = {}
+    for span in soup.select('div.info-content span'):
+        b = span.find('b')
+        if b:
+            key = b.text.strip(':').strip()
+            b.decompose()
+            info_items[key] = span.text.strip()
 
-    slug = series_list[idx]["slug"]
-    context.user_data["current_series_idx"] = idx
+    # Genres & Tags
+    genres = [a.text for a in soup.select('div.genxed a')]
+    tags   = [a.text for a in soup.select('div.bottom.tags a')]
 
-    try:
-        info = get_series_info(slug)
-    except Exception as e:
-        logger.error("Series info error: %s", e)
-        return q.edit_message_text("⚠️ Could not fetch series info.")
+    # Synopsis
+    synopsis = {"english":None,"indonesian":None}
+    synp = soup.select_one('div.synp')
+    if synp:
+        p_en = synp.find('p')
+        p_id = synp.select_one('div.entry-content p')
+        synopsis['english']    = p_en.text.strip() if p_en else None
+        synopsis['indonesian']= p_id.text.strip() if p_id else None
 
-    title = info.get("title") or slug
-    episodes = info.get("episodes") or []
-    context.user_data["episode_list"] = episodes
-    context.user_data["episode_page"] = 0
+    # Episodes
+    episodes = []
+    for li in soup.select('div.eplister li'):
+        a = li.find('a',href=True)
+        if not a: continue
+        ep_slug = a['href'].rstrip('/').split('/')[-1]
+        episodes.append({
+            "episode_number": safe_text(li,'div.epl-num'),
+            "title":          safe_text(li,'div.epl-title'),
+            "sub_type":       safe_text(li,'div.epl-sub'),
+            "release_date":   safe_text(li,'div.epl-date'),
+            "url":            a['href'],
+            "ep_slug":        ep_slug
+        })
 
-    _show_episode_page(q, context, title, page=0)
+    # First/Last
+    fl = {}
+    lastend = soup.select_one('div.lastend')
+    if lastend:
+        ff = lastend.select_one('span.epcurfirst')
+        ll = lastend.select('a')
+        fl['first'] = {
+            "episode": ff.text.strip() if ff else None,
+            "url":     ll[0]['href'] if ll else None
+        }
+        fl['last'] = {
+            "episode": safe_text(lastend,'span.epcurlast'),
+            "url":     ll[1]['href'] if len(ll)>1 else None
+        }
 
+    return jsonify({
+        "title":            title,
+        "alternate_title":  alter_title,
+        "description":      description,
+        "cover_images":     cover_images,
+        "rating":           rating,
+        "followers":        followers,
+        "info":             info_items,
+        "genres":           genres,
+        "tags":             tags,
+        "synopsis":         synopsis,
+        "first_last_episode": fl,
+        "episodes":         episodes
+    })
 
-def _show_episode_page(query, context: CallbackContext, title: str, page: int):
-    episodes = context.user_data["episode_list"]
-    total = len(episodes)
-    start = page * PAGE_SIZE
-    end = min(start + PAGE_SIZE, total)
+@app.route('/episode/videos')
+def episode_videos():
+    ep = request.args.get('ep_slug','').strip()
+    if not ep:
+        return jsonify({"error":"ep_slug required"}),400
 
-    buttons = []
-    for i in range(start, end):
-        ep = episodes[i]
-        key = str(i)
-        label = ep.get("title") or f"Episode {ep.get('episode_number', i+1)}"
-        buttons.append([
-            InlineKeyboardButton(label, callback_data=f"episode_select#{key}")
-        ])
+    # 1) donghua
+    url = f"{BASE_URL}donghua/{ep}"
+    r = make_request(url)
+    # 2) movie
+    if not r or r.status_code>=400:
+        url = f"{BASE_URL}movie/{ep}"
+        r = make_request(url)
+    if not r:
+        return jsonify({"error":"animexin.dev unreachable"}),502
 
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton("« Prev", callback_data=f"episode_page#{page-1}"))
-    if end < total:
-        nav.append(InlineKeyboardButton("Next »", callback_data=f"episode_page#{page+1}"))
-    # Back to series list
-    nav.append(InlineKeyboardButton("« Back", callback_data="back_to_series"))
-    if nav:
-        buttons.append(nav)
+    soup = BeautifulSoup(r.text,'html.parser')
+    sel  = soup.find('select',class_='mirror')
+    if not sel:
+        return jsonify({"error":"no servers"}),404
 
-    markup = InlineKeyboardMarkup(buttons)
-    text = f"**{title}**\nSelect an episode:"
-    query.edit_message_text(text, reply_markup=markup, parse_mode="Markdown")
+    video_servers = []
+    for opt in sel.find_all('option'):
+        val = opt.get('value')
+        if not val: continue
+        html = base64.b64decode(val).decode('utf-8')
+        fsoup= BeautifulSoup(html,'html.parser')
+        iframe = fsoup.find('iframe')
+        src = iframe['src'] if iframe and iframe.has_attr('src') else None
+        if src and src.startswith('//'):
+            src = 'https:'+src
+        video_servers.append({
+            "server_name": opt.text.strip(),
+            "video_url":   src
+        })
 
-    context.user_data["episode_page"] = page
+    return jsonify({
+        "episode_url": url,
+        "available_servers": len(video_servers),
+        "video_servers": video_servers
+    })
 
-
-def episode_page_callback(update: Update, context: CallbackContext):
-    q = update.callback_query
-    q.answer()
-    page = int(q.data.split("#",1)[1])
-    title = context.user_data.get("series_list")[context.user_data.get("current_series_idx")].get("title")
-    _show_episode_page(q, context, title, page)
-
-
-def back_to_series_callback(update: Update, context: CallbackContext):
-    q = update.callback_query
-    q.answer()
-    page = context.user_data.get("series_page", 0)
-    _show_series_page(q, context, page)
-
-
-def episode_select_callback(update: Update, context: CallbackContext):
-    q = update.callback_query
-    q.answer()
-    idx = int(q.data.split("#",1)[1])
-    episodes = context.user_data.get("episode_list", [])
-    if idx < 0 or idx >= len(episodes):
-        return q.edit_message_text("❌ Invalid selection.")
-
-    ep_slug = episodes[idx]["ep_slug"]
-    try:
-        servers = get_episode_videos(ep_slug)
-    except Exception as e:
-        logger.error("Episode videos error: %s", e)
-        return q.edit_message_text("⚠️ Could not fetch episode video links.")
-
-    selected = next(
-        (s for s in servers if s["server_name"].lower().startswith("all sub player dailymotion")),
-        None
-    )
-    if not selected:
-        return q.edit_message_text("🚫 Dailymotion server not available.")
-
-    video_url = selected["video_url"]
-    q.message.reply_text(f"🎬 Video (Dailymotion)\n{video_url}")
-
-    # subtitle via yt-dlp
-    data = download_subtitles_with_ytdlp(video_url, lang="it")
-    if not data:
-        return q.message.reply_text("⚠️ Italian subtitles not found.")
-    buf = io.BytesIO(data)
-    buf.name = "italian_subtitles.srt"
-    q.message.reply_document(
-        document=buf,
-        filename="italian_subtitles.srt",
-        caption="💬 Italian subtitles"
-    )
-
-
-def error_handler(update: object, context: CallbackContext):
-    logger.error("Unhandled error", exc_info=context.error)
-    if update and getattr(update, "message", None):
-        update.message.reply_text("😵 Something went wrong.")
-    raise DispatcherHandlerStop()
-
-
-def main():
-    updater = Updater(config.TELEGRAM_TOKEN, use_context=True)
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("search", search))
-
-    dp.add_handler(CallbackQueryHandler(series_page_callback, pattern=r"^series_page#"))
-    dp.add_handler(CallbackQueryHandler(series_select_callback, pattern=r"^series_select#"))
-
-    dp.add_handler(CallbackQueryHandler(episode_page_callback, pattern=r"^episode_page#"))
-    dp.add_handler(CallbackQueryHandler(back_to_series_callback, pattern=r"^back_to_series$"))
-    dp.add_handler(CallbackQueryHandler(episode_select_callback, pattern=r"^episode_select#"))
-
-    dp.add_error_handler(error_handler)
-
-    updater.start_polling()
-    updater.idle()
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT',8080)), debug=True)
