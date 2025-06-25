@@ -145,29 +145,41 @@ def get_donghua_info():
         synopsis['indonesian']= p_id.text.strip() if p_id else None
 
     # Episodes
-    # Episodes (via AJAX)
-    # 1) grab the internal animeId from the page’s <script>
-    script   = soup.find("script", string=re.compile("animeId"))
-    anime_id = re.search(r'animeId\s*:\s*"(\d+)"', script.string).group(1)
+  # ————— Episodes (via AJAX) —————
+    # 1) Try to extract the animeId by scanning every <script> for the AJAX URL
+    anime_id = None
+    for scr in soup.find_all("script"):
+        text = (scr.string or scr.text or "")
+        m = re.search(r"/ajax/v2/episode/list/(\d+)", text)
+        if m:
+            anime_id = m.group(1)
+            break
 
-    # 2) hit the real episode‐list endpoint
-    ajax     = requests.get(
-                  f"{BASE_URL}ajax/v2/episode/list/{anime_id}",
-                  headers=HEADERS,
-                  timeout=10
-              ).json()
+    if not anime_id:
+        # we couldn’t find the ID, so return a clean error instead of crashing
+        return jsonify({
+            "error": "Could not locate internal animeId for slug “%s”" % slug
+        }), 500
 
-    # 3) build your episodes array
+    # 2) Call the real episode-list endpoint
+    ajax = requests.get(
+        f"{BASE_URL}ajax/v2/episode/list/{anime_id}",
+        headers=HEADERS,
+        timeout=10
+    ).json()
+
+    # 3) Build your episodes array
     episodes = []
-    for e in ajax["episodesList"]:
+    for e in ajax.get("episodesList", []):
         episodes.append({
-            "episode_number": e["episodeNum"],
-            "title":          "",  # or pull from e if available
+            "episode_number": e.get("episodeNum"),
+            "title":          "",  # animexin.dev doesn’t give you a title here
             "sub_type":       "",
             "release_date":   "",
             "url":            f"{BASE_URL}donghua/{e['episodeId']}",
             "ep_slug":        e["episodeId"]
         })
+    # ——————————————————————————————
 
     # First/Last
     fl = {}
