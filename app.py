@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS 
+from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
 import base64
@@ -144,46 +144,47 @@ def get_donghua_info():
         synopsis['english']    = p_en.text.strip() if p_en else None
         synopsis['indonesian']= p_id.text.strip() if p_id else None
 
-    # Episodes
-+    # 1) Try to discover the internal anime_id from any <script> URL pattern
-+    anime_id = None
-+    for scr in soup.find_all("script"):
-+        text = (scr.string or scr.text or "")
-+        m = re.search(r"/ajax/v2/episode/list/(\d+)", text)
-+        if m:
-+            anime_id = m.group(1)
-+            break
-+
-+    episodes = []
-+    if anime_id:
-+        # 2) AJAX fetch
-+        ajax = requests.get(
-+            f"{BASE_URL}ajax/v2/episode/list/{anime_id}",
-+            headers=HEADERS, timeout=10
-+        ).json()
-+        for e in ajax.get("episodesList", []):
-+            episodes.append({
-+                "episode_number": e.get("episodeNum"),
-+                "title":          "",  # not provided in JSON
-+                "sub_type":       "",
-+                "release_date":   "",
-+                "url":            f"{BASE_URL}donghua/{e['episodeId']}",
-+                "ep_slug":        e["episodeId"]
-+            })
-+    else:
-+        # 3) Fallback to old HTML scrape (won’t crash; may be empty)
-+        for li in soup.select('div.eplister li'):
-+            a = li.find('a', href=True)
-+            if not a: continue
-+            ep_slug = a['href'].rstrip('/').split('/')[-1]
-+            episodes.append({
-+                "episode_number": safe_text(li, 'div.epl-num'),
-+                "title":          safe_text(li, 'div.epl-title'),
-+                "sub_type":       safe_text(li, 'div.epl-sub'),
-+                "release_date":   safe_text(li, 'div.epl-date'),
-+                "url":            a['href'],
-+                "ep_slug":        ep_slug
-+            })
+    # Episodes (try AJAX, fall back to HTML)
+    anime_id = None
+    for scr in soup.find_all("script"):
+        text = scr.string or scr.text or ""
+        m = re.search(r"/ajax/v2/episode/list/(\d+)", text)
+        if m:
+            anime_id = m.group(1)
+            break
+
+    episodes = []
+    if anime_id:
+        # AJAX fetch
+        resp = requests.get(
+            f"{BASE_URL}ajax/v2/episode/list/{anime_id}",
+            headers=HEADERS, timeout=10
+        )
+        ajax = resp.json()
+        for e in ajax.get("episodesList", []):
+            episodes.append({
+                "episode_number": e.get("episodeNum"),
+                "title":          "",  # not provided in JSON
+                "sub_type":       "",
+                "release_date":   "",
+                "url":            f"{BASE_URL}donghua/{e['episodeId']}",
+                "ep_slug":        e["episodeId"]
+            })
+    else:
+        # fallback to old HTML scrape
+        for li in soup.select('div.eplister li'):
+            a = li.find('a', href=True)
+            if not a:
+                continue
+            ep_slug = a['href'].rstrip('/').split('/')[-1]
+            episodes.append({
+                "episode_number": safe_text(li, 'div.epl-num'),
+                "title":          safe_text(li, 'div.epl-title'),
+                "sub_type":       safe_text(li, 'div.epl-sub'),
+                "release_date":   safe_text(li, 'div.epl-date'),
+                "url":            a['href'],
+                "ep_slug":        ep_slug
+            })
 
     # First/Last
     fl = {}
