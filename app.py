@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 import base64
 import os
+import re
 from urllib.parse import quote
 from requests.exceptions import RequestException
 
@@ -144,18 +145,28 @@ def get_donghua_info():
         synopsis['indonesian']= p_id.text.strip() if p_id else None
 
     # Episodes
+    # Episodes (via AJAX)
+    # 1) grab the internal animeId from the page’s <script>
+    script   = soup.find("script", string=re.compile("animeId"))
+    anime_id = re.search(r'animeId\s*:\s*"(\d+)"', script.string).group(1)
+
+    # 2) hit the real episode‐list endpoint
+    ajax     = requests.get(
+                  f"{BASE_URL}ajax/v2/episode/list/{anime_id}",
+                  headers=HEADERS,
+                  timeout=10
+              ).json()
+
+    # 3) build your episodes array
     episodes = []
-    for li in soup.select('div.eplister li'):
-        a = li.find('a',href=True)
-        if not a: continue
-        ep_slug = a['href'].rstrip('/').split('/')[-1]
+    for e in ajax["episodesList"]:
         episodes.append({
-            "episode_number": safe_text(li,'div.epl-num'),
-            "title":          safe_text(li,'div.epl-title'),
-            "sub_type":       safe_text(li,'div.epl-sub'),
-            "release_date":   safe_text(li,'div.epl-date'),
-            "url":            a['href'],
-            "ep_slug":        ep_slug
+            "episode_number": e["episodeNum"],
+            "title":          "",  # or pull from e if available
+            "sub_type":       "",
+            "release_date":   "",
+            "url":            f"{BASE_URL}donghua/{e['episodeId']}",
+            "ep_slug":        e["episodeId"]
         })
 
     # First/Last
