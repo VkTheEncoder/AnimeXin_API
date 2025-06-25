@@ -145,41 +145,45 @@ def get_donghua_info():
         synopsis['indonesian']= p_id.text.strip() if p_id else None
 
     # Episodes
-  # ————— Episodes (via AJAX) —————
-    # 1) Try to extract the animeId by scanning every <script> for the AJAX URL
-    anime_id = None
-    for scr in soup.find_all("script"):
-        text = (scr.string or scr.text or "")
-        m = re.search(r"/ajax/v2/episode/list/(\d+)", text)
-        if m:
-            anime_id = m.group(1)
-            break
-
-    if not anime_id:
-        # we couldn’t find the ID, so return a clean error instead of crashing
-        return jsonify({
-            "error": "Could not locate internal animeId for slug “%s”" % slug
-        }), 500
-
-    # 2) Call the real episode-list endpoint
-    ajax = requests.get(
-        f"{BASE_URL}ajax/v2/episode/list/{anime_id}",
-        headers=HEADERS,
-        timeout=10
-    ).json()
-
-    # 3) Build your episodes array
-    episodes = []
-    for e in ajax.get("episodesList", []):
-        episodes.append({
-            "episode_number": e.get("episodeNum"),
-            "title":          "",  # animexin.dev doesn’t give you a title here
-            "sub_type":       "",
-            "release_date":   "",
-            "url":            f"{BASE_URL}donghua/{e['episodeId']}",
-            "ep_slug":        e["episodeId"]
-        })
-    # ——————————————————————————————
++    # 1) Try to discover the internal anime_id from any <script> URL pattern
++    anime_id = None
++    for scr in soup.find_all("script"):
++        text = (scr.string or scr.text or "")
++        m = re.search(r"/ajax/v2/episode/list/(\d+)", text)
++        if m:
++            anime_id = m.group(1)
++            break
++
++    episodes = []
++    if anime_id:
++        # 2) AJAX fetch
++        ajax = requests.get(
++            f"{BASE_URL}ajax/v2/episode/list/{anime_id}",
++            headers=HEADERS, timeout=10
++        ).json()
++        for e in ajax.get("episodesList", []):
++            episodes.append({
++                "episode_number": e.get("episodeNum"),
++                "title":          "",  # not provided in JSON
++                "sub_type":       "",
++                "release_date":   "",
++                "url":            f"{BASE_URL}donghua/{e['episodeId']}",
++                "ep_slug":        e["episodeId"]
++            })
++    else:
++        # 3) Fallback to old HTML scrape (won’t crash; may be empty)
++        for li in soup.select('div.eplister li'):
++            a = li.find('a', href=True)
++            if not a: continue
++            ep_slug = a['href'].rstrip('/').split('/')[-1]
++            episodes.append({
++                "episode_number": safe_text(li, 'div.epl-num'),
++                "title":          safe_text(li, 'div.epl-title'),
++                "sub_type":       safe_text(li, 'div.epl-sub'),
++                "release_date":   safe_text(li, 'div.epl-date'),
++                "url":            a['href'],
++                "ep_slug":        ep_slug
++            })
 
     # First/Last
     fl = {}
